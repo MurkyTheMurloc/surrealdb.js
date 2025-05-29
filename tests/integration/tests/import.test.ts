@@ -15,9 +15,14 @@ describe("import", async () => {
 			CREATE foo:1 CONTENT { hello: "world" };
 		`);
 
-		const res = await surreal.query(/* surql */ `
+		const res = await surreal
+			.query(
+				/* surql */ `
 			SELECT * FROM foo;
-		`);
+		`,
+				undefined,
+			)
+			.execute();
 
 		expect(res).toMatchSnapshot();
 	});

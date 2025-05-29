@@ -8,6 +8,13 @@ import {
 	partiallyEncodeObject,
 } from "../cbor";
 import { replacer } from "../data/cbor";
+import type { MustBeSurqlValue } from "../data/types/querybindingvalues";
+import type {
+	ConcatStrings,
+	ParallelSurqlQueryBindingsArray,
+	SurqlQueryBindings,
+	WithPartiallyEncodeValues,
+} from "../types";
 
 let textEncoder: TextEncoder;
 
@@ -16,15 +23,26 @@ export type ConvertMethod<T = unknown> = (result: unknown[]) => T;
 /**
  * A query and its bindings prepared for execution, which can be passed to the .query() method.
  */
-export class PreparedQuery {
+export class PreparedQuery<
+	const Q extends string = string,
+	const B extends SurqlQueryBindings<Q> = SurqlQueryBindings<Q>,
+> {
 	private _query: Uint8Array;
-	private _bindings: Record<string, PartiallyEncoded>;
+	private _bindings: WithPartiallyEncodeValues<
+		SurqlQueryBindings<Q>,
+		PartiallyEncoded
+	>;
 	private length: number;
 
-	constructor(query: string, bindings?: Record<string, unknown>) {
+	constructor(
+		query: Q,
+		bindings: {
+			[K in keyof B]: MustBeSurqlValue<B[K]>;
+		},
+	) {
 		textEncoder ??= new TextEncoder();
 		this._query = textEncoder.encode(query);
-		this._bindings = partiallyEncodeObject(bindings ?? {}, {
+		this._bindings = partiallyEncodeObject<Q>(bindings ?? {}, {
 			replacer: replacer.encode,
 		});
 		this.length = Object.keys(this._bindings).length;
@@ -44,7 +62,10 @@ export class PreparedQuery {
 	/**
 	 * Retrieves the encoded bindings.
 	 */
-	get bindings(): Record<string, PartiallyEncoded> {
+	get bindings(): WithPartiallyEncodeValues<
+		SurqlQueryBindings<Q>,
+		PartiallyEncoded
+	> {
 		return this._bindings;
 	}
 
@@ -67,10 +88,16 @@ export class PreparedQuery {
 	 *   query.append` WHERE name = ${filter}`;
 	 * }
 	 */
-	append(
-		query_raw: string[] | TemplateStringsArray,
-		...values: unknown[]
-	): PreparedQuery {
+	append<
+		const Qs extends readonly string[],
+		const Bindings extends ParallelSurqlQueryBindingsArray<Qs>,
+	>(
+		query_raw: readonly [...Qs] | TemplateStringsArray,
+		values: readonly [...Bindings],
+	): PreparedQuery<
+		ConcatStrings<Q, Qs>,
+		SurqlQueryBindings<ConcatStrings<Q, Qs>>
+	> {
 		const base = this.length;
 		this.length += values.length;
 

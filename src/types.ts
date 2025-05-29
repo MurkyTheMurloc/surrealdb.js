@@ -1,10 +1,154 @@
 import type { AuthController } from "./auth";
-import type { Fill } from "./cbor";
 import { type RecordId, Uuid } from "./data";
+
+import type { Fill } from "./cbor";
+import type {
+	MustBeSurqlValue,
+	SurqlQueryBindingValue,
+} from "./data/types/querybindingvalues";
 import { SurrealDbError } from "./errors";
 import type { Surreal } from "./surreal";
 import type { PreparedQuery } from "./util/prepared-query";
 
+//////////////////////////////////////////////
+//////////   QUERY Binding TYPES   //////////
+//////////////////////////////////////////////
+export type ConcatStrings<
+	A extends string,
+	B extends readonly string[],
+> = B extends []
+	? A
+	: B extends [infer Head extends string, ...infer Tail extends string[]]
+		? ConcatStrings<`${A} ${Head}`, Tail>
+		: A;
+
+type IdentChar =
+	| "_"
+	| "$"
+	| "0"
+	| "1"
+	| "2"
+	| "3"
+	| "4"
+	| "5"
+	| "6"
+	| "7"
+	| "8"
+	| "9"
+	| "A"
+	| "B"
+	| "C"
+	| "D"
+	| "E"
+	| "F"
+	| "G"
+	| "H"
+	| "I"
+	| "J"
+	| "K"
+	| "L"
+	| "M"
+	| "N"
+	| "O"
+	| "P"
+	| "Q"
+	| "R"
+	| "S"
+	| "T"
+	| "U"
+	| "V"
+	| "W"
+	| "X"
+	| "Y"
+	| "Z"
+	| "a"
+	| "b"
+	| "c"
+	| "d"
+	| "e"
+	| "f"
+	| "g"
+	| "h"
+	| "i"
+	| "j"
+	| "k"
+	| "l"
+	| "m"
+	| "n"
+	| "o"
+	| "p"
+	| "q"
+	| "r"
+	| "s"
+	| "t"
+	| "u"
+	| "v"
+	| "w"
+	| "x"
+	| "y"
+	| "z";
+
+type SplitIdent<
+	S extends string,
+	Acc extends string = "",
+> = S extends `${infer First}${infer Rest}`
+	? First extends IdentChar
+		? SplitIdent<Rest, `${Acc}${First}`>
+		: [Acc, S]
+	: [Acc, ""];
+
+type ExtractDollarWords<S extends string> =
+	S extends `${infer _Before}$${infer After}`
+		? SplitIdent<After> extends [
+				infer Key extends string,
+				infer Rem extends string,
+			]
+			? (Key extends "" ? never : Key) | ExtractDollarWords<Rem>
+			: never
+		: never;
+
+type BindingsFor<Keys extends string, V> = {
+	[K in Keys]: V;
+};
+
+export type WithPartiallyEncodeValues<T, V> = {
+	[K in keyof T]: V;
+};
+type EnforceSurqlValues<T> = {
+	[K in keyof T]: MustBeSurqlValue<T[K]>;
+};
+type ReservedBindingNames =
+	| "this"
+	| "parent"
+	| "access"
+	| "auth"
+	| "token"
+	| "session";
+export type RustFnParams<S extends string> =
+	S extends `${infer _Pre}${infer _Class}::${infer _Func}(${infer Body})${infer Rest}`
+		? ExtractDollarWords<Body> | RustFnParams<Rest>
+		: never;
+
+export type SurqlQueryBindings<Q extends string> = Exclude<
+	ExtractDollarWords<Q>,
+	ReservedBindingNames | RustFnParams<Q>
+> extends infer Keys
+	? [Keys] extends [never]
+		? Record<never, never> | undefined
+		: {
+				[K in Extract<Keys & string, string>]: MustBeSurqlValue<
+					BindingsFor<K, SurqlQueryBindingValue>[K]
+				>;
+			}
+	: never;
+
+export type ParallelSurqlQueryBindingsArray<Qs extends readonly string[]> = {
+	[I in keyof Qs]: SurqlQueryBindings<Qs[I]> extends infer R
+		? [keyof R] extends [never]
+			? undefined
+			: EnforceSurqlValues<R>
+		: never;
+};
 export type ActionResult<T extends Record<string, unknown>> = Prettify<
 	T["id"] extends RecordId ? T : { id: RecordId } & T
 >;
@@ -13,9 +157,33 @@ export type Prettify<T> = {
 	[K in keyof T]: T[K];
 } & {}; // deno-lint-ignore ban-types
 
-export type QueryParameters =
-	| [query: string, bindings?: Record<string, unknown>]
-	| [prepared: PreparedQuery, gaps?: Fill[]];
+export type ExecuteSurqlQuery = {
+	execute<T extends unknown[T]>(): Promise<Prettify<[T]>>;
+};
+export type ExecuteRawSurqlQuery = {
+	execute<T extends unknown[T]>(): Promise<Prettify<MapQueryResult<[T]>>>;
+};
+
+type FinalBinding<B> = B extends undefined
+	? undefined
+	: { [K in keyof B]: MustBeSurqlValue<B[K]> };
+type IsEmptyBindings<T> = T extends undefined | Record<string, never>
+	? true
+	: false;
+export type QueryParameters<
+	Q extends string,
+	B extends SurqlQueryBindings<Q> = SurqlQueryBindings<Q>,
+> = IsEmptyBindings<B> extends true
+	?
+			| [query: Q]
+			| [query: Q, bindings: undefined]
+			| [
+					prepared: PreparedQuery<string, Record<never, never> | undefined>,
+					gaps?: Fill[],
+			  ]
+	:
+			| [query: Q, bindings: FinalBinding<B>]
+			| [prepared: PreparedQuery<Q, B>, gaps?: Fill[]];
 
 //////////////////////////////////////////////
 //////////   AUTHENTICATION TYPES   //////////

@@ -9,11 +9,15 @@ const { createSurreal } = await setupServer();
 beforeAll(async () => {
 	const surreal = await createSurreal();
 
-	await surreal.query(surql`
+	await surreal
+		.query(
+			surql`
 		CREATE foo:1 CONTENT { hello: "world" };
 		CREATE bar:1 CONTENT { hello: "world" };
 		DEFINE FUNCTION fn::foo() { RETURN "bar"; };
-	`);
+	`,
+		)
+		.execute();
 });
 
 describe("export", async () => {

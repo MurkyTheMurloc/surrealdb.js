@@ -1,10 +1,11 @@
 import { Value } from "../value";
+import type { SurqlFuture } from "./querybindingvalues";
 
 /**
  * An uncomputed SurrealQL future value.
  */
-export class Future extends Value {
-	constructor(readonly inner: string) {
+export class Future<F extends string> extends Value {
+	constructor(readonly inner: F) {
 		super();
 	}
 
@@ -17,7 +18,7 @@ export class Future extends Value {
 		return this.toString();
 	}
 
-	toString(): string {
+	toString(): SurqlFuture<F> {
 		return `<future> ${this.inner}`;
 	}
 }

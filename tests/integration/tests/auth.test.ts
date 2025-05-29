@@ -24,12 +24,16 @@ describe("scope auth", async () => {
 	if (!version.startsWith("surrealdb-1")) return;
 
 	beforeAll(async () => {
-		await surreal.query(/* surql */ `
+		await surreal
+			.query(
+				/* surql */ `
     		DEFINE TABLE user PERMISSIONS FOR select WHERE id = $auth;
     		DEFINE SCOPE user
     			SIGNUP ( CREATE type::thing('user', $id) )
     			SIGNIN ( SELECT * FROM type::thing('user', $id) );
-    	`);
+    	`,
+			)
+			.execute();
 	});
 
 	test("scope signup", async () => {
@@ -62,12 +66,16 @@ describe("record auth", async () => {
 	if (version.startsWith("surrealdb-1")) return;
 
 	beforeAll(async () => {
-		await surreal.query(/* surql */ `
+		await surreal
+			.query(
+				/* surql */ `
     		DEFINE TABLE user PERMISSIONS FOR select WHERE id = $auth;
     		DEFINE ACCESS user ON DATABASE TYPE RECORD
     			SIGNUP ( CREATE type::thing('user', $id) )
     			SIGNIN ( SELECT * FROM type::thing('user', $id) );
-    	`);
+    	`,
+			)
+			.execute();
 	});
 
 	test("record signup", async () => {

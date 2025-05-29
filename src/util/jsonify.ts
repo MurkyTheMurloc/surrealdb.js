@@ -16,7 +16,7 @@ export type Jsonify<T> = T extends
 	| Uuid
 	| Decimal
 	| Duration
-	| Future
+	| Future<string>
 	| Range<unknown, unknown>
 	| StringRecordId
 	? string

@@ -1,4 +1,5 @@
-import { StringRecordId, Uuid } from "../data";
+import { Future, StringRecordId, Uuid } from "../data";
+import type { SurqlFuture } from "../data/types/querybindingvalues";
 
 /**
  * A template literal tag function for parsing a string type
@@ -27,6 +28,18 @@ export function d(
 	...values: unknown[]
 ): Date {
 	return new Date(s(string, values));
+}
+/**
+ * A template literal tag function for parsing a string into a future
+ * @param string - The string to parse
+ * @param values - The interpolated values
+ * @returns The parsed future string
+ */
+export function f(
+	string: string[] | TemplateStringsArray,
+	...values: unknown[]
+): SurqlFuture<string> {
+	return new Future(s(string, values)).toString();
 }
 
 /**
