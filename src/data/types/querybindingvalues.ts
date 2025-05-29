@@ -1,5 +1,6 @@
 import type { Gap } from "../../cbor";
 import type { RecordId, StringRecordId } from "./recordid";
+import type { Table } from "./table";
 import type { Uuid } from "./uuid";
 export type SurqlFuture<F extends string> = `<future> ${F}`;
 
@@ -46,6 +47,7 @@ export type SurqlQueryBindingValue =
 	| Uuid
 	| boolean
 	| Gap
+	| Table
 	| number;
 
 export type AssertValidSurqlValue<
@@ -63,22 +65,24 @@ export type AssertValidSurqlValue<
 
 export type MustBeSurqlValue<V> = V extends Date
 	? V
-	: V extends boolean
+	: V extends Table
 		? V
-		: V extends Gap
+		: V extends boolean
 			? V
-			: V extends number
+			: V extends Gap
 				? V
-				: V extends Uuid
+				: V extends number
 					? V
-					: V extends StringRecordId
+					: V extends Uuid
 						? V
-						: V extends Date
+						: V extends StringRecordId
 							? V
-							: V extends RecordId
+							: V extends Date
 								? V
-								: V extends unknown
+								: V extends RecordId
 									? V
-									: V extends string
-										? AssertValidSurqlValue<V>
-										: never;
+									: V extends unknown
+										? V
+										: V extends string
+											? AssertValidSurqlValue<V>
+											: never;
