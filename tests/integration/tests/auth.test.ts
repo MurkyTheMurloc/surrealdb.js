@@ -74,6 +74,7 @@ describe("record auth", async () => {
     			SIGNUP ( CREATE type::thing('user', $id) )
     			SIGNIN ( SELECT * FROM type::thing('user', $id) );
     	`,
+				{},
 			)
 			.execute();
 	});

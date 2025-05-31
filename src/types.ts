@@ -129,17 +129,22 @@ export type RustFnParams<S extends string> =
 
 export type SurqlQueryBindings<Q extends string> = Exclude<
 	ExtractDollarWords<Q>,
-	ReservedBindingNames | RustFnParams<Q>
-> extends infer Keys
-	? [Keys] extends [never]
+	ReservedBindingNames
+> extends infer AllBindings
+	? [AllBindings] extends [never]
 		? Record<never, never> | undefined
 		: {
-				[K in Extract<Keys & string, string>]: MustBeSurqlValue<
-					BindingsFor<K, SurqlQueryBindingValue>[K]
-				>;
+				[K in Extract<
+					Exclude<AllBindings, RustFnParams<Q>> & string,
+					string
+				>]: MustBeSurqlValue<BindingsFor<K, SurqlQueryBindingValue>[K]>;
+			} & {
+				[K in Extract<
+					Extract<AllBindings, RustFnParams<Q>> & string,
+					string
+				>]?: MustBeSurqlValue<BindingsFor<K, SurqlQueryBindingValue>[K]>;
 			}
 	: never;
-
 export type ParallelSurqlQueryBindingsArray<Qs extends readonly string[]> = {
 	[I in keyof Qs]: SurqlQueryBindings<Qs[I]> extends infer R
 		? [keyof R] extends [never]
