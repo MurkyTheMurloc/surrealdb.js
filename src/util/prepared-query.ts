@@ -132,12 +132,4 @@ export class PreparedQuery<const Q extends string = string> {
 	}
 }
 
-const query = new PreparedQuery("Select * from table where id  = $id", {
-	id: "",
-});
 
-const updatedQuery = query.append(
-	["Select * from hello world where hello_word = $hello_world"],
-	[{ hello_world: "some" }],
-);
-const bindings = updatedQuery.bindings;

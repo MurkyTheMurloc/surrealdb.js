@@ -6,6 +6,7 @@ import {
 	decodeCbor,
 	encodeCbor,
 } from "./data";
+import type { SurqlQueryBindingValue } from "./data";
 import {
 	type AbstractEngine,
 	ConnectionStatus,
@@ -439,8 +440,11 @@ export class Surreal extends AuthController {
 		bindings: readonly [...Bindings],
 	): ExecuteSurqlQuery {
 		let finalQuery = "";
+
+		const finalBindings: Record<string, SurqlQueryBindingValue> = {};
+
 		for (let i = 0; i <= queries.length - 1; i++) {
-			let query = queries[i];
+			const query = queries[i];
 			const binding = bindings[i];
 			if (typeof query !== "string") {
 				continue;
@@ -457,7 +461,7 @@ export class Surreal extends AuthController {
 				continue;
 			}
 			for (const key of Object.keys(binding)) {
-				query = query.replace(`$${key}`, `"${binding[key]}"`);
+				finalBindings[key] = binding[key];
 			}
 			if (query.endsWith(";")) {
 				finalQuery += query;
@@ -468,7 +472,9 @@ export class Surreal extends AuthController {
 		const self = this;
 		return {
 			async execute<T extends unknown[T]>(): Promise<Prettify<[T]>> {
-				const raw = await self.queryRaw(finalQuery).execute<T>();
+				const raw = await self
+					.queryRaw(finalQuery, finalBindings as unknown as undefined)
+					.execute<T>();
 				return raw.map(({ status, result }) => {
 					if (status === "ERR") throw new ResponseError(result);
 					return result;
