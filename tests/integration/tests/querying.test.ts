@@ -469,6 +469,7 @@ describe("template literal", async () => {
 			["; RETURN [$foo, $bar, $1, $foo, $bar, $2]"],
 			[{ foo: foo, bar: bar, "1": 1, "2": 2 }],
 		);
+
 		expect(Object.keys(query.bindings)).toStrictEqual([
 			"bind___0",
 			"bind___1",
