@@ -10,13 +10,13 @@ import {
 import { replacer } from "../data/cbor";
 import type {
 	ConcatStrings,
-	ParallelSurqlQueryBindingsArray,
 	SurqlQueryBindings,
 	WithPartiallyEncodeValues,
 } from "../types";
 
 let textEncoder: TextEncoder;
 
+type BindingOrGap<Q extends string> = SurqlQueryBindings<Q> | Gap;
 export type ConvertMethod<T = unknown> = (result: unknown[]) => T;
 
 /**
@@ -81,7 +81,9 @@ export class PreparedQuery<const Q extends string = string> {
 	 */
 	append<
 		const Qs extends readonly string[],
-		const Bindings extends ParallelSurqlQueryBindingsArray<Qs>,
+		const Bindings extends {
+			[I in keyof Qs]: BindingOrGap<Qs[I]>;
+		},
 	>(
 		query_raw: readonly [...Qs] | TemplateStringsArray,
 		values: readonly [...Bindings],
@@ -106,6 +108,7 @@ export class PreparedQuery<const Q extends string = string> {
 		});
 
 		for (const [k, v] of mapped_bindings) {
+			// @ts-expect-error: we know “k” may not be in keyof SurqlQueryBindings<Q>
 			this._bindings[k] = encode(v, {
 				replacer: replacer.encode,
 				partial: true,
@@ -128,3 +131,13 @@ export class PreparedQuery<const Q extends string = string> {
 		return this;
 	}
 }
+
+const query = new PreparedQuery("Select * from table where id  = $id", {
+	id: "",
+});
+
+const updatedQuery = query.append(
+	["Select * from hello world where hello_word = $hello_world"],
+	[{ hello_world: "some" }],
+);
+const bindings = updatedQuery.bindings;

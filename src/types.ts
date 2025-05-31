@@ -111,9 +111,7 @@ type BindingsFor<Keys extends string, V> = {
 	[K in Keys]: V;
 };
 
-export type WithPartiallyEncodeValues<T, V> = {
-	[K in keyof T]: V;
-};
+export type WithPartiallyEncodeValues<T, V> = Record<keyof T, V>;
 type EnforceSurqlValues<T> = {
 	[K in keyof T]: MustBeSurqlValue<T[K]>;
 };
@@ -177,13 +175,10 @@ export type QueryParameters<
 	?
 			| [query: Q]
 			| [query: Q, bindings: undefined]
-			| [
-					prepared: PreparedQuery<string, Record<never, never> | undefined>,
-					gaps?: Fill[],
-			  ]
+			| [prepared: PreparedQuery<string>, gaps?: Fill[]]
 	:
 			| [query: Q, bindings: FinalBinding<B>]
-			| [prepared: PreparedQuery<Q, B>, gaps?: Fill[]];
+			| [prepared: PreparedQuery<Q>, gaps?: Fill[]];
 
 //////////////////////////////////////////////
 //////////   AUTHENTICATION TYPES   //////////
