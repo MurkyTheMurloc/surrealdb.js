@@ -44,8 +44,11 @@ export function partiallyEncodeObject<Q extends string>(
 	object: SurqlQueryBindings<Q> | Record<never, never>,
 	options?: EncoderOptions<true>,
 ): WithPartiallyEncodeValues<SurqlQueryBindings<Q>, PartiallyEncoded> {
+	// it can happen that the bindings are undefined  and typescript complains
+	// so we need to add a little check
+	const o = object ?? {};
 	return Object.fromEntries(
-		Object.entries(object).map(([k, v]) => [
+		Object.entries(o).map(([k, v]) => [
 			k,
 			encode(v, { ...options, partial: true }),
 		]),
