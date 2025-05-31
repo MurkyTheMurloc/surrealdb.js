@@ -8,7 +8,6 @@ import {
 	partiallyEncodeObject,
 } from "../cbor";
 import { replacer } from "../data/cbor";
-import type { MustBeSurqlValue } from "../data/types/querybindingvalues";
 import type {
 	ConcatStrings,
 	ParallelSurqlQueryBindingsArray,
@@ -23,10 +22,7 @@ export type ConvertMethod<T = unknown> = (result: unknown[]) => T;
 /**
  * A query and its bindings prepared for execution, which can be passed to the .query() method.
  */
-export class PreparedQuery<
-	const Q extends string = string,
-	const B extends SurqlQueryBindings<Q> = SurqlQueryBindings<Q>,
-> {
+export class PreparedQuery<const Q extends string = string> {
 	private _query: Uint8Array;
 	private _bindings: WithPartiallyEncodeValues<
 		SurqlQueryBindings<Q>,
@@ -34,12 +30,7 @@ export class PreparedQuery<
 	>;
 	private length: number;
 
-	constructor(
-		query: Q,
-		bindings: {
-			[K in keyof B]: MustBeSurqlValue<B[K]>;
-		},
-	) {
+	constructor(query: Q, bindings: SurqlQueryBindings<Q>) {
 		textEncoder ??= new TextEncoder();
 		this._query = textEncoder.encode(query);
 		this._bindings = partiallyEncodeObject<Q>(bindings ?? {}, {
@@ -94,10 +85,7 @@ export class PreparedQuery<
 	>(
 		query_raw: readonly [...Qs] | TemplateStringsArray,
 		values: readonly [...Bindings],
-	): PreparedQuery<
-		ConcatStrings<Q, Qs>,
-		SurqlQueryBindings<ConcatStrings<Q, Qs>>
-	> {
+	): PreparedQuery<ConcatStrings<Q, Qs>> {
 		const base = this.length;
 		this.length += values.length;
 
