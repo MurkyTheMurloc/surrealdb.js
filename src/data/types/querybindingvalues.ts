@@ -81,8 +81,8 @@ export type MustBeSurqlValue<V> = V extends Date
 								? V
 								: V extends RecordId
 									? V
-									: V extends unknown
-										? V
-										: V extends string
-											? AssertValidSurqlValue<V>
+									: V extends string
+										? AssertValidSurqlValue<V>
+										: V extends unknown
+											? V
 											: never;
