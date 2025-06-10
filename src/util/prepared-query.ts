@@ -8,23 +8,32 @@ import {
 	partiallyEncodeObject,
 } from "../cbor";
 import { replacer } from "../data/cbor";
+import type {
+	ConcatStrings,
+	SurqlQueryBindings,
+	WithPartiallyEncodeValues,
+} from "../types";
 
 let textEncoder: TextEncoder;
 
+type BindingOrGap<Q extends string> = SurqlQueryBindings<Q> | Gap;
 export type ConvertMethod<T = unknown> = (result: unknown[]) => T;
 
 /**
  * A query and its bindings prepared for execution, which can be passed to the .query() method.
  */
-export class PreparedQuery {
+export class PreparedQuery<const Q extends string = string> {
 	private _query: Uint8Array;
-	private _bindings: Record<string, PartiallyEncoded>;
+	private _bindings: WithPartiallyEncodeValues<
+		SurqlQueryBindings<Q>,
+		PartiallyEncoded
+	>;
 	private length: number;
 
-	constructor(query: string, bindings?: Record<string, unknown>) {
+	constructor(query: Q, bindings: SurqlQueryBindings<Q>) {
 		textEncoder ??= new TextEncoder();
 		this._query = textEncoder.encode(query);
-		this._bindings = partiallyEncodeObject(bindings ?? {}, {
+		this._bindings = partiallyEncodeObject<Q>(bindings ?? {}, {
 			replacer: replacer.encode,
 		});
 		this.length = Object.keys(this._bindings).length;
@@ -44,7 +53,10 @@ export class PreparedQuery {
 	/**
 	 * Retrieves the encoded bindings.
 	 */
-	get bindings(): Record<string, PartiallyEncoded> {
+	get bindings(): WithPartiallyEncodeValues<
+		SurqlQueryBindings<Q>,
+		PartiallyEncoded
+	> {
 		return this._bindings;
 	}
 
@@ -67,10 +79,15 @@ export class PreparedQuery {
 	 *   query.append` WHERE name = ${filter}`;
 	 * }
 	 */
-	append(
-		query_raw: string[] | TemplateStringsArray,
-		...values: unknown[]
-	): PreparedQuery {
+	append<
+		const Qs extends readonly string[],
+		const Bindings extends {
+			[I in keyof Qs]: BindingOrGap<Qs[I]>;
+		},
+	>(
+		query_raw: readonly [...Qs] | TemplateStringsArray,
+		values: readonly [...Bindings],
+	): PreparedQuery<ConcatStrings<Q, Qs>> {
 		const base = this.length;
 		this.length += values.length;
 
@@ -91,6 +108,7 @@ export class PreparedQuery {
 		});
 
 		for (const [k, v] of mapped_bindings) {
+			// @ts-expect-error: we know “k” may not be in keyof SurqlQueryBindings<Q>
 			this._bindings[k] = encode(v, {
 				replacer: replacer.encode,
 				partial: true,
@@ -113,3 +131,5 @@ export class PreparedQuery {
 		return this;
 	}
 }
+
+

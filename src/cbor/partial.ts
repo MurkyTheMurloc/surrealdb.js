@@ -1,3 +1,4 @@
+import type { SurqlQueryBindings, WithPartiallyEncodeValues } from "../types";
 import type { Replacer } from "./constants";
 import { type EncoderOptions, encode } from "./encoder";
 import { CborFillMissing } from "./error";
@@ -39,14 +40,17 @@ export class PartiallyEncoded {
 	}
 }
 
-export function partiallyEncodeObject(
-	object: Record<string, unknown>,
+export function partiallyEncodeObject<Q extends string>(
+	object: SurqlQueryBindings<Q> | Record<never, never>,
 	options?: EncoderOptions<true>,
-): Record<string, PartiallyEncoded> {
+): WithPartiallyEncodeValues<SurqlQueryBindings<Q>, PartiallyEncoded> {
+	// it can happen that the bindings are undefined  and typescript complains
+	// so we need to add a little check
+	const o = object ?? {};
 	return Object.fromEntries(
-		Object.entries(object).map(([k, v]) => [
+		Object.entries(o).map(([k, v]) => [
 			k,
 			encode(v, { ...options, partial: true }),
 		]),
-	);
+	) as WithPartiallyEncodeValues<SurqlQueryBindings<Q>, PartiallyEncoded>;
 }

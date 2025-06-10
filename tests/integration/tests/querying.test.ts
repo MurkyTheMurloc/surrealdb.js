@@ -8,8 +8,10 @@ import {
 	GeometryMultiPolygon,
 	GeometryPoint,
 	GeometryPolygon,
+	PreparedQuery,
 	RecordId,
 	StringRecordId,
+	type SurqlQueryBindingValue,
 	Table,
 	Uuid,
 	surql,
@@ -396,7 +398,7 @@ describe("template literal", async () => {
 	test("with gap", async () => {
 		const name = new Gap();
 		const query = surql`CREATE ONLY person:test SET name = ${name}`;
-		const res = await surreal.query(query, [name.fill("test")]);
+		const res = await surreal.query(query, [name.fill("test")]).execute();
 		expect(res).toStrictEqual([
 			{
 				id: new RecordId("person", "test"),
@@ -409,14 +411,14 @@ describe("template literal", async () => {
 		await surreal.let("test1", 123);
 		const gap = new Gap<number>();
 		const query = surql`RETURN [$test1, ${456}, ${gap}]`;
-		const res = await surreal.query(query, [gap.fill(789)]);
+		const res = await surreal.query(query, [gap.fill(789)]).execute();
 		expect(res).toStrictEqual([[123, 456, 789]]);
 	});
 
 	test("has replacer context", async () => {
 		const id = new RecordId("test", 123);
 		const query = surql`RETURN ${id}`;
-		const res = await surreal.query(query);
+		const res = await surreal.query(query).execute();
 		expect(res).toStrictEqual([id]);
 	});
 
@@ -427,10 +429,12 @@ describe("template literal", async () => {
 
 		// Append to it
 		const age = new Gap();
-		query.append`, age = ${age}`;
+		query.append([`, age = ${age}`], [undefined]);
 
 		// Check result
-		const res = await surreal.query(query, [name.fill("append"), age.fill(20)]);
+		const res = await surreal
+			.query(query, [name.fill("append"), age.fill(20)])
+			.execute();
 
 		expect(res).toStrictEqual([
 			{
@@ -444,7 +448,15 @@ describe("template literal", async () => {
 	test("reused gap", async () => {
 		const foo = new Gap();
 		const bar = new Gap();
-		const query = surql`RETURN [${foo}, ${bar}, ${1}, ${foo}, ${bar}, ${2}]`;
+
+		//string literals cant provid typesafety
+		//const query = surql`RETURN [${foo},${bar}, ${1}, ${foo}, ${bar}, ${2}]`;
+		const query = new PreparedQuery("RETURN [$foo,$bar, $1, $foo, $bar, $2]", {
+			foo: foo,
+			bar: bar,
+			"1": 1,
+			"2": 2,
+		});
 		expect(Object.keys(query.bindings)).toStrictEqual([
 			"bind___0",
 			"bind___1",
@@ -453,7 +465,11 @@ describe("template literal", async () => {
 		]);
 
 		// Ensure appended segments also re-use
-		query.append`; RETURN [${foo}, ${bar}, ${1}, ${foo}, ${bar}, ${2}]`;
+		query.append(
+			["; RETURN [$foo, $bar, $1, $foo, $bar, $2]"],
+			[{ foo: foo, bar: bar, "1": 1, "2": 2 }],
+		);
+
 		expect(Object.keys(query.bindings)).toStrictEqual([
 			"bind___0",
 			"bind___1",
@@ -466,7 +482,9 @@ describe("template literal", async () => {
 		]);
 
 		// Check result
-		const res = await surreal.query(query, [foo.fill("a"), bar.fill("b")]);
+		const [res] = await surreal
+			.query(query, [foo.fill("a"), bar.fill("b")])
+			.execute<[string, string, number, string, string, number][]>();
 
 		expect(res).toStrictEqual([
 			["a", "b", 1, "a", "b", 2],
@@ -487,12 +505,13 @@ describe("value encoding/decoding", async () => {
 	) => {
 		const runner = todo ? test.todoIf(true) : test.if(cond ?? true);
 		runner(name, async () => {
-			const [output] = await surreal.query<[typeof input]>(
-				/* surql */ "$input",
-				{
-					input,
-				},
-			);
+			const [output] = await surreal
+				.query(/* surql */ "$input", {
+					//because of value validation we need to cast unknown values
+					//explicit to SurqlQueryBindingValue
+					input: input as SurqlQueryBindingValue,
+				})
+				.execute<typeof input>();
 
 			expect(output).toStrictEqual(input);
 		});
@@ -567,12 +586,11 @@ describe("value encoding/decoding", async () => {
 test("record id bigint", async () => {
 	const surreal = await createSurreal();
 
-	const [output] = await surreal.query<[{ id: RecordId }]>(
-		/* surql */ "CREATE ONLY $id",
-		{
+	const [output] = await surreal
+		.query(/* surql */ "CREATE ONLY $id", {
 			id: new RecordId("person", 90071992547409915n),
-		},
-	);
+		})
+		.execute<{ id: RecordId }>();
 
 	expect(output.id).toStrictEqual(new RecordId("person", 90071992547409915n));
 });
@@ -580,12 +598,11 @@ test("record id bigint", async () => {
 test("string record id", async () => {
 	const surreal = await createSurreal();
 
-	const [output] = await surreal.query<[{ id: RecordId }]>(
-		/* surql */ "CREATE ONLY $id",
-		{
+	const [output] = await surreal
+		.query(/* surql */ "CREATE ONLY $id", {
 			id: new StringRecordId("person:123"),
-		},
-	);
+		})
+		.execute<{ id: RecordId }>();
 
 	expect(output.id).toStrictEqual(new RecordId("person", 123));
 });
@@ -593,12 +610,11 @@ test("string record id", async () => {
 test("table", async () => {
 	const surreal = await createSurreal();
 
-	const [output] = await surreal.query<[Table]>(
-		/* surql */ "RETURN type::table($table)",
-		{
+	const [output] = await surreal
+		.query(/* surql */ "RETURN type::table($table)", {
 			table: "person",
-		},
-	);
+		})
+		.execute<Table>();
 
 	expect(output).toStrictEqual(new Table("person"));
 });

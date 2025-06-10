@@ -6,6 +6,7 @@ import {
 	decodeCbor,
 	encodeCbor,
 } from "./data";
+import type { SurqlQueryBindingValue } from "./data";
 import {
 	type AbstractEngine,
 	ConnectionStatus,
@@ -13,21 +14,24 @@ import {
 	type EngineEvents,
 	type Engines,
 } from "./engines/abstract.ts";
-import { Emitter } from "./util/emitter.ts";
-import { PreparedQuery } from "./util/prepared-query.ts";
-import { versionCheck } from "./util/version-check.ts";
-
 import type {
 	ActionResult,
 	ConnectOptions,
+	ExecuteRawSurqlQuery,
+	ExecuteSurqlQuery,
 	ExportOptions,
 	LiveHandler,
 	MapQueryResult,
+	ParallelSurqlQueryBindingsArray,
 	Patch,
 	Prettify,
 	QueryParameters,
 	RpcResponse,
+	SurqlQueryBindings,
 } from "./types.ts";
+import { Emitter } from "./util/emitter.ts";
+import { PreparedQuery } from "./util/prepared-query.ts";
+import { versionCheck } from "./util/version-check.ts";
 
 import { AuthController } from "./auth.ts";
 import { type Fill, partiallyEncodeObject } from "./cbor";
@@ -234,6 +238,7 @@ export class Surreal extends AuthController {
 	 * @param key - Specifies the name of the variable.
 	 * @param val - Assigns the value to the variable name.
 	 */
+
 	async let(variable: string, value: unknown): Promise<true> {
 		const res = await this.rpc("let", [variable, value]);
 		if (res.error) throw new ResponseError(res.error.message);
@@ -332,18 +337,40 @@ export class Surreal extends AuthController {
 	}
 
 	/**
-	 * Runs a set of SurrealQL statements against the database.
-	 * @param query - Specifies the SurrealQL statements.
-	 * @param bindings - Assigns variables which can be used in the query.
+	 * Executes a single SurrealQL query against the database with optional variable bindings.
+	 *
+	 * This method allows dynamic SurrealQL execution with parameter substitution. Variables in the query
+	 * should be prefixed with `$` (e.g., `$id`) and are replaced by values provided in the `bindings` object.
+	 *
+	 * Example usage:
+	 * ```ts
+	 * const result = await db.query(
+	 *   'SELECT * FROM user WHERE id = $id',
+	 *   { id: '123' }
+	 * ).execute();
+	 * ```
+	 *
+	 * @template Q - A SurrealQL query string.
+	 * @template B - A bindings object corresponding to variables in the query string.
+	 *
+	 * @param {...QueryParameters<Q, B>} args - A tuple consisting of a query string and its associated bindings object.
+	 * @returns {{
+	 *   execute<T>(): Promise<[T]>
+	 * }} An object with an `execute` method that performs the query and returns the result in a typed array.
 	 */
-	async query<T extends unknown[]>(
-		...args: QueryParameters
-	): Promise<Prettify<T>> {
-		const raw = await this.queryRaw<T>(...args);
-		return raw.map(({ status, result }) => {
-			if (status === "ERR") throw new ResponseError(result);
-			return result;
-		}) as T;
+	query<Q extends string, B extends SurqlQueryBindings<Q>>(
+		...args: QueryParameters<Q, B>
+	): ExecuteSurqlQuery {
+		const self = this;
+		return {
+			async execute<T extends unknown[T]>(): Promise<Prettify<[T]>> {
+				const raw = await self.queryRaw<Q>(...args).execute<T>();
+				return raw.map(({ status, result }) => {
+					if (status === "ERR") throw new ResponseError(result);
+					return result;
+				}) as [T];
+			},
+		};
 	}
 
 	/**
@@ -351,24 +378,109 @@ export class Surreal extends AuthController {
 	 * @param query - Specifies the SurrealQL statements.
 	 * @param bindings - Assigns variables which can be used in the query.
 	 */
-	async queryRaw<T extends unknown[]>(
-		...[q, b]: QueryParameters
-	): Promise<Prettify<MapQueryResult<T>>> {
-		const params =
-			q instanceof PreparedQuery
-				? [
-						q.query,
-						partiallyEncodeObject(q.bindings, {
-							fills: b as Fill[],
-							replacer: replacer.encode,
-						}),
-					]
-				: [q, b];
+	queryRaw<Q extends string>(
+		...[q, b]: QueryParameters<Q>
+	): ExecuteRawSurqlQuery {
+		const self = this;
+		return {
+			async execute<T extends unknown[T]>(): Promise<
+				Prettify<MapQueryResult<T>>
+			> {
+				const params =
+					q instanceof PreparedQuery
+						? [
+								q.query,
+								partiallyEncodeObject(q.bindings, {
+									fills: b as Fill[],
+									replacer: replacer.encode,
+								}),
+							]
+						: [q, b];
 
-		await this.ready;
-		const res = await this.rpc<MapQueryResult<T>>("query", params);
-		if (res.error) throw new ResponseError(res.error.message);
-		return res.result;
+				await self.ready;
+				const res = await self.rpc<MapQueryResult<T>>("query", params);
+				if (res.error) throw new ResponseError(res.error.message);
+				return res.result;
+			},
+		};
+	}
+
+	/**
+	 * Executes multiple SurrealQL queries against the database, with optional bindings for each query.
+	 *
+	 * This function takes an array of SurrealQL query strings and a corresponding array of binding objects.
+	 * It substitutes variables in each query using the bindings, concatenates all queries into a single SurrealQL string,
+	 * and prepares an executable object that runs the combined query when `.execute()` is called.
+	 *
+	 * Each variable in the query string should be prefixed with `$` (e.g. `$id`), and will be replaced by the corresponding
+	 * value in the bindings object. If no bindings are provided for a query, it will be executed as-is.
+	 *
+	 * Example usage:
+	 * ```ts
+	 * const result = await db.parallelQuery(
+	 *   ['SELECT * FROM user WHERE id = $id', 'SELECT * FROM post WHERE title = $title'],
+	 *   [{ id: '123' }, { title: 'Hello' }]
+	 * ).execute();
+	 * ```
+	 *
+	 * @template Qs - A readonly tuple of query strings.
+	 * @template Bindings - A readonly tuple of bindings corresponding to the query strings.
+	 *
+	 * @param {readonly [...Qs]} queries - An array of SurrealQL queries to execute.
+	 * @param {readonly [...Bindings]} bindings - An array of bindings for each query, where each binding is an object mapping keys to values used in the corresponding query.
+	 * @returns {{
+	 *   execute<T>(): Promise<[T]>
+	 * }} An object with an `execute` method that runs the constructed query and returns the typed result.
+	 */
+	queryMany<
+		const Qs extends readonly string[],
+		const Bindings extends ParallelSurqlQueryBindingsArray<Qs>,
+	>(
+		queries: readonly [...Qs],
+		bindings: readonly [...Bindings],
+	): ExecuteSurqlQuery {
+		let finalQuery = "";
+
+		const finalBindings: Record<string, SurqlQueryBindingValue> = {};
+
+		for (let i = 0; i <= queries.length - 1; i++) {
+			const query = queries[i];
+			const binding = bindings[i];
+			if (typeof query !== "string") {
+				continue;
+			}
+			if (typeof query !== "string" && typeof binding === "undefined") {
+				continue;
+			}
+			if (typeof binding === "undefined") {
+				if (query.endsWith(";")) {
+					finalQuery += query;
+					continue;
+				}
+				finalQuery += `${query};`;
+				continue;
+			}
+			for (const key of Object.keys(binding)) {
+				finalBindings[key] = binding[key];
+			}
+			if (query.endsWith(";")) {
+				finalQuery += query;
+			} else {
+				finalQuery += `${query};`;
+			}
+		}
+		const self = this;
+		return {
+			async execute<T extends unknown[T]>(): Promise<Prettify<[T]>> {
+				const raw = await self
+					.queryRaw(finalQuery, finalBindings as unknown as undefined)
+					.execute<T>();
+				return raw.map(({ status, result }) => {
+					if (status === "ERR") throw new ResponseError(result);
+					return result;
+				}) as [T];
+			},
+		};
 	}
 
 	/**
@@ -378,9 +490,9 @@ export class Surreal extends AuthController {
 	 * @deprecated Use `queryRaw` instead
 	 */
 	async query_raw<T extends unknown[]>(
-		...args: QueryParameters
-	): Promise<Prettify<MapQueryResult<T>>> {
-		return this.queryRaw<T>(...args);
+		...args: QueryParameters<string>
+	): Promise<Prettify<MapQueryResult<[T]>>> {
+		return await this.queryRaw(...args).execute<T>();
 	}
 
 	/**

@@ -44,7 +44,7 @@ describe("rpc", async () => {
 		});
 
 		expect(async () => {
-			await surreal.query("SELECT * FROM test");
+			await surreal.query("SELECT * FROM test", undefined).execute();
 		}).toThrow();
 	});
 });
@@ -62,7 +62,7 @@ describe("prepare", async () => {
 			},
 		});
 
-		await surreal.query("CREATE example");
+		await surreal.query("CREATE example", undefined).execute();
 	});
 
 	test("authentication with prepare over http", async () => {
@@ -77,6 +77,6 @@ describe("prepare", async () => {
 			},
 		});
 
-		await surreal.query("CREATE example");
+		await surreal.query("CREATE example", undefined).execute();
 	});
 });

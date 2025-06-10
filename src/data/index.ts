@@ -26,3 +26,9 @@ export {
 	GeometryPolygon,
 } from "./types/geometry.ts";
 export { encodeCbor, decodeCbor } from "./cbor.ts";
+
+export type {
+	AssertValidSurqlValue,
+	SurqlQueryBindingValue,
+	SurqlFuture,
+} from "./types/querybindingvalues.ts";
